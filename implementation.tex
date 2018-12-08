@@ -1,0 +1,35 @@
+
+
+\section{Related Work}
+In this section we list down the most recent and important work that we 
+found related to our work. 
+
+\noindent{Multi-core transactions}
+With widespread use of multi-core machines, and terabytes of main memory
+it is possible to run complete data management system within a single 
+physical node. Cicada~\cite{cicada} implments an in-memory, serializable
+transaction processing database with multi-version concurrency control. They
+introduce vector clocks based time-stamping for multi-cores. Echo~\cite{echo}
+implements MVCC based key-value store for NVM based multi-core systems. Echo 
+uses a global timestamp for versioning. GTEcho differs from these works as
+our main goal is to scale time-stamping both within single node and across nodes.
+
+\noindent{Distributed transactions}
+FARM~\cite{farm} implements a distributed shared memory programming using distributed 
+transactions. There system is heavily optimized for one-sided RDMA operations.
+Fasst~\cite{fasst} also implements distributed RDMA based trasactions, but with 
+optimized RDMA based RPC. Specifically they use unreliable datagram connection
+for fast RPC using RDMA. Both of the above uses conventional 2PL based concurrency
+control for distributed transactions. NAM-DB~\cite{namdb} implements OCC based 
+distribtued transactions using RDMA primtives. They scale cross node timestamping
+using per-thread based vector clocks. They do not optimize timestamping for 
+partitioned data stores ( compute is always remote to the data).
+
+\noindent{Hardware timestamps}
+Spanner~\cite{spanner} implements strictly serializable distributed transactions
+using synchronized hardware clocks and introduces Truetime abstractions for 
+timestamp based ordering. GTecho uses hybrid timestamps where cross node operation
+ordering and optimize local node operation ordering using commodity hardware clocks.
+
+To the best of our knowledge GTEcho is the only system that uses hybrid vector
+clock based timestamps to accelerate both local and distribtued transactions.
