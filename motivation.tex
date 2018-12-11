@@ -58,50 +58,56 @@ look at.
 We now look at a distributed transactional steps happening in a 
 multi-versioned key-value store that uses optimistic concurrency control (OCC)
 as the concurrency control mechanism. The transactions operate under data consistency
-model named snapshot isolation. We briefly introduce them here as we use the terms 
+model named snapshot-isolation (SI)~\cite{isolation}. We briefly introduce them here as we use the terms 
 extensively in the text to follow.
 
 \noindent{\bf multi-versioning}
 We create a new copy of the data for each update and associate with a version. Furthermore, we record the 
 begin and end timestamps of the trsansction ids that created/updated the data. The key idea here is that
 incoming transactions figure out the visibility of data based on these timestamps. As a rule of thumb, you
-can read data from future.
+cannot read data from the future.
 
-\noindent{\bf OCC}
+\noindent{\bf optimistic concurrency-control}
 We copy/read the data in a private workspace during transactional execution. The writes get updated in the 
-local copy as well. The speculative workspace update get merged in to master data versions at the very
+local copy as well. The speculative updates get merged in to master data versions at the very
 end of the transaction -- we call this transaction commit. Conflicting writes results in transaction aborts.
 
 \noindent{\bf snapshot-isolation}
-Defines the transactional data consistency model. Each transaction works on a snapshot of the database that
-existed at the begin of the transaction. The snapshot is logically constructed using begin, end timestamps of the
-versioned data. Snapshot isolated transactions are not serializable.
+Defines the transactional data consistency model. Each transaction 
+works on a snapshot of the database that
+existed at the begin of the transaction. The snapshot is logically 
+constructed using \texttt{begin}, \texttt{end} timestamps of the
+versioned data. Snapshot-isolated transactions are not serializable.
 
-Executing transaction involves first fetching the read timestamp (rts). rts value defines the logical database
-snapshot for the transaction. Subsequent reads for a specific key is fetched from the multiversioned data table
-based on the visibility rules using RDMA reads (step 1 in ~\ref{fig:si}) in to the local sandboxed memory.(e.g the tuple with ckey\=3 in
+Executing a transaction involves first fetching the read timestamp (\texttt{rts}). 
+\texttt{rts} value defines the logical database
+snapshot for the transaction. Subsequent reads for a specific key is 
+fetched from the multi-versioned data table
+based on the visibility rules using RDMA reads (step 1 in Fig~\ref{fig:si}) in 
+to the local sandboxed memory.(e.g the tuple with ckey $=3$ in
 the example). The writes are buffered in the sandboxed memory as well. 
 
 During the commit step, the transaction execution thread fetches a unique commit timestamp (cts)
 from the memory server/global counter ( step 3 in Fig ~\ref{fig:si}). At the commit time, 
-transaction exuecution thread/compute server verifies and locks all records in its write-set on
+transaction exuecution thread/compute server verifies and locks for all records in its write-set on
 the memory servers by locking each of the key entreis. The key idea is to check if the write-set
 entries has been modified since their last read -- which signals possible conflict. After the verification
 step the speculative updates get merged in to the versioned data store -- while holding the latches
 for each of the write-set keys.
 
 The above discussion on snapshot-isolated MVCC transactions is aimed at giving the bare minimal
-knowledge to understand rest of the paper. For thorough discussion on the topic we recommend~\cite{namdb}.
+knowledge to understand rest of the paper. For thorough discussion on the topic we recommend reading~\cite{namdb}.
 
 \subsection{The Need for scalable timestamps}
 
-The previously described global timestamping mechanism is not scalable~\cite{rethinking}, both
-in node local multi-core and distributed environment.
+The previously described, per-data partition,
+global timestamping mechanism is not scalable~\cite{rethinking},
+for both node local and distributed transactions.
 First, for each remote transaction, execution thread has to do a RDMA atomic fetch-and-add 
 operation to a same memory location ( unique per partition ) to create a unique timestamp.
 Atomic RDMA operations requires latching in the NIC hardware level and scales poorly with the
 concurrent accesses -- number of transaction execution threads.
-Scalability of RDMA atomic instructions based timestamps is not limited to above~\cite{namdb}.
+Scalability of the RDMA atomic instructions based timestamps is not limited to above~\cite{namdb}.
 
 
 Next, fat compute nodes with hundreads of CPU cores and terabytes DRAM/NVM memory is going
@@ -109,7 +115,7 @@ to be a norm in enterprise computing. Smart data partitioning schemes on the dat
 eliminate distributed transactions by converting them in to node local transactions.
 However, transactional operational involving local data updates still needs to be ordered 
 to maintain correct concurrency and data consistency duarantees. The conventional atomic
-counters based timestamping scales poorly across cores and NUMA sockets~\cite{ordo}. This 
+counter based timestamping scales poorly across cores and NUMA sockets~\cite{ordo}. This 
 is because atomic instructions involves costly cache-coherence transactions to avoid 
 concurrent modifications to the data.
 
@@ -118,16 +124,9 @@ We argue that it is important to design a scalable timestamping mechanism that i
 optimized for both node local transactions and remote transactions as it is the most 
 heavily used deployment model found in enterprise.
 Related work such as, NAM-DB~\cite{namdb} does not have a notion of local
-data updates, as the compute is always remote to the data. On the other spectrum, 
+data updates (similar to our example), as the compute is always remote to the data. On the other spectrum, 
 systems like ~\cite{cicada} only solves scalability in node local transactions.
+
 In this work, we propose scalable timestamps technique that is optimized for both
 node local and remote transactions.
 
-
-
-\begin{figure}[]   
-	\centering
-	\includegraphics[width=\linewidth]{figures/gtecho.pdf} 
-	\caption{\small } 
-	\label{fig:gtecho} 
-\end{figure}

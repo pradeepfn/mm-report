@@ -1,28 +1,30 @@
 
 \section{Implementation}
-In this section we show how we implemented each of the components in GTEcho key value store.
+In this section we show how we implemented LSHV clock based timestamping in GTEcho key-value store.
 We build up on Echo~\cite{echo} codebase to realize our hybrid vector clocks based distributed transactions.
-During the implementation process some of the planned work did not worked out as expected. 
+During the implementation process some of the planned project steps did not worked out as expected. 
 We discuss such incomplete components here in detail as well.
 
 
-\subsection{Local GTEcho}
+\subsection{Local GTEcho Transactions}
 
 We first describe the implementation details of local transactions in GTEcho. 
 The challenge is to integrate hardware clock based timestamping to an OCC based
-MVCC engine. We describe key data-structures of GTEcho and key modificaiton we 
+MVCC engine. We describe key data-structures of GTEcho and key modificaitons we 
 carried out for achieving our goal.
 
 \begin{figure}[]   
 	\centering
 	\includegraphics[width=\linewidth]{figures/echo_ds.png} 
-	\caption{The main data-structure of echo is a hash-table. Each hash entry points to a list of versioned data entries. This diagram is from ~\cite{echo}} 
+	\caption{\bf The main data-structure of GTEcho is a hash-table. 
+	Each hash entry points to a list of versioned data entries. This diagram is from ~\cite{echo}} 
 	\label{fig:echods} 
 \end{figure}
 
 GTEcho key value store consists of one main data structure -- a hash table that can maintain versioned data objects. 
 There are two flavours of runtime hash table structures. First is the hash-table layout for the 
-persistence data storage. The keys in the hash table points to a list of version-entry structures ~\ref{fig:echods}.
+persistence data storage. The keys in the hash table points to a list of version-entry structures
+(see Fig.~\ref{fig:echods}).
 Updating/appending new entries to the list involves crash-consistent NVM update steps. We do not describe them as they
 are out-of-scope in terms of our current problem focus.
 
@@ -30,16 +32,19 @@ Second, each worker thread maintain a volatile hash-table structure to keep trac
 Instead of multiple version entries, the table maintain only one version -- the read/write set does not need multiple versions.
 Furthermore, volatile hash-table does not follow NVM crash-consistent semantics during updates.
 
-At the start of the speculative execution worker thread reads the \[ T_R \] and cache it in the local workspace. The subsequent
+At the start of the speculative execution worker thread reads the $T_R$ and cache it in the local workspace. The subsequent
 reads that are not already cached get fetched from the local NVM resident hash-table based on data visibility version checks.
-During the commit time we lock each of the write-set entries and compare them with with our commit timestamp \[T_C\] for 
-conflics. -- if no conflicts the worker merges the local chenges in to NVM resident master hash-table.
+During the commit time we lock each of the write-set entries and 
+compare them with  our commit timestamp $T_C$ for 
+conflics. -- if no conflicts the worker merges the local chenges in to NVM resident master hash-table. 
 
-We ported the original Echo kvstore to use our hardware clock based local timestamping. The  port took around 100 lines
-of code. The Echo code has roughly 8000 lines of C code and the authors do not describe much of the internals related to
-concurrency in their paper.
+We ported the original Echo kvstore to use our hardware clock based local timestamping. 
+The port took around 100 lines of C code. The Echo code has roughly 8000 lines of C code and 
+the authors do not describe much of the internals related to
+concurrency in their paper. Therefore most of the porting effort went 
+in to understanding their existing code.
 
-\subsection{Distributed GTEcho}
+\subsection{Distributed GTEcho Transactions}
 
 During a distributed transaction involving two or more partitions of GTEcho, the corresponding worker thread has to 
 interact with the remote GTEcho instances in-addition to local one. However, the basic steps of read fetch, write-buffering
@@ -48,27 +53,27 @@ client/server communication abstraction. We use RPC over one-sided RDMA read/wri
 RPC based interface requires minimal changes to existing data structures.
 
 Our first choice was to use Existing RDMA RPC~\cite{drtmh} library for the GTEcho port. We chose recent work named ROCC~\cite{rocc} 
-as the library code is available open-source and claim ease of use. The library would have been an ideal match as it
+as the library code is available open-source and claims ease of use. The library would have been an ideal match as it
 implements RDMA RPC over UD -- a key peformnce enhacing technique. However, our attempts to get it working for even
-simple RPC call failed. The found out that the core RDMA code base is has strong dependencies to the other code pieces
+simple RPC call failed. We found out that the core RDMA code base is has strong dependencies to the other code pieces
 where they implement distributed transactions. 
 
 Next, we tried building our own RDMA RPC library. We used RDMA RC send/receive primitives supported by ibverbs 
 library to creeate a initial working RPC client/server. However, we failed to integrate the code piece in to GTEcho
-due to time constraints. We managed to achieve throughput of x over a simple echo message use y bytes as RPC header
-on our testbed machine.
+due to time constraints.
 
 \subsection{Failed Attempts}
 
-Our first choice of implementing proposed timestamping technique was to use NAM-DB code base. They already
+Our first choice of implementing proposed timestamping technique was to use NAM-DB~\cite{namdb} code base. They already
 implement vector clock based timestamps and has distributed transactions support. However, we found out
 that NAM-DB codebase was taken out of its open source hosting site due to interllectual propery issues.
 We contacted the author of the work, but he denied sharing the code base because of the same.
 
 \section{Evaluation}
 
-We evaluate GTEcho on our in-house cluster ~\ref{tab:eval}. We only have node local GTEcho in the working
-state due to implementation chanllenges described before. Hence the following experiments 
+We evaluate GTEcho on our in-house Jedi cluster (see Table ~\ref{tab:eval}). 
+We only have node local GTEcho in the working
+state due to implementation chanllenges described above. Hence the following experiments 
 will show the effectiveness of hardware clock based timestamping -- a critical component 
 in our proposed loosely synchronized hybrid vector clcock timestamps.
 
@@ -93,12 +98,29 @@ We use the same benchmark configuration in our runs and report the average of 3 
 \begin{figure}[]   
 	\centering
 	\includegraphics[width=\linewidth]{figures/chart.png} 
-	\caption{\small } 
+	\caption{\bf Comparison of original Echo timestamping performance  to our new LSHV clock based timestamps in 
+	GTEcho} 
 	\label{fig:eval} 
 \end{figure}
 
+We measure the execution time of each local timestamping scheme while weak
+scaling the number of total operations per transaction execution thread -- 100k per thread.
+The workload uses 80\% put request making the workload write heavy. We commit transactions
+after every 8 put/get operations for each execution thread. Each of the execution threads were
+pinned to physical CPU cores. NVM was emulated using tmpfs file system. That is 
+we do not account for high read/write latencies of NVM and treat the persistence
+device operate as fast as DRAM main memory.
 
-
+With small and medium worloads, that is no of execution threads equal to 2 and 4 respectively,
+the Echo and GTEcho timestamping schemes perform equally well. However, 
+with large workload run, GTEcho timestamping scheme cuts down the Echo 
+execution time by nearly 40\% (see Fig.~\ref{fig:eval}). The high transaction execution thread count 
+put the timestamping in the critical path and our proposed hardware clock based scheme
+performs well when the contention is high. Furthermore we realize that 
+Echo timestamp counter uses pthread latches to guard against concurrent modifications and increments
+happen in the critical path of the data merge. We attribute the speedups we observe
+during the experiment to both our new timestamp mechanism and bad programming choices 
+they made in their original code.
 
 
 \section{Related Work}
@@ -136,5 +158,12 @@ To the best of our knowledge GTEcho is the only system that uses hybrid vector
 clock based timestamps to accelerate both local and distribtued transactions.
 
 
-
 \section{Discussion}
+
+We introduce LSHV clock based sclable timestamping mechanism for MVCC based partition
+data stores. The peformance scaling of the new clock is because of 1) use of seperate
+counters for each of the remote transaction exeuction thread -- that eliminate RDMA
+atomic operation contention on a single memory location. 2) use of relatively relaxed (compared to vecor clocks)
+hardware based timestamping technique when the transaction execution is local to the partition.
+Our initial results are promising. We plan to do a full evaluation of the system as our future work.
+

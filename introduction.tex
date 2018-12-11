@@ -3,20 +3,45 @@ Transaction is a useful programming abstraction for manipulating
 shared data. In transactional programming,  a set of  shared data 
 operations that has been enclosed by begin() and end() transaction 
 directives get executed as a one atomic unit. The consistency, 
-isolation and durability guarantees of the same data also 
+isolation and durability guarantees of those operations
 get handled by the runtime, executing the transactions. 
 
-Modern databases/data stores manage large amounts of data. 
+Modern databases/data-stores manage large amounts of data. 
 Servicing data operations using a single node is not feasible 
-due to lack of data capacity and compute. Modern large-scale 
-datastore deployments solves this by partitioning the 
-data store among multiple compute/data nodes. 
+due to lack of data capacity and compute resources. Modern large-scale 
+datastore deployments solve this by partitioning the 
+data store among multiple compute/data nodes. In such environment
+transactions are distributed.
 
+Transactional programming has been extensively studied in 
+computer science literature over the years. However, recent
+hardware advancements in networks (RDMA) and compute (multic-cores) and
+storage/memory (NVM) may have made some of the well known bottlenecks
+invalid -- thus encourage us to evaluate/re-design these mechanisms for
+modern hardware/application parameters.
 
+In this paper, we are going to look at the specific problem of creating
+scalable timestamps for the purpose of distributed event ordering.
+There has been several recent work on the topic~\cite{namdb, cicada}. They
+either optimize timestamping for distributed transaction or node local 
+transactions. However, most of the real world deployments falls in to
+middle of that spectrum.
 
+In this paper we introduce a scalable hybrid timestamping scheme 
+that scales, both for node local and distributed transactions. 
+We call it, loosely sychronized hybrid vector (LSHV) timestamps.
+The LSHV timestamps combine fast hardware clock based 
+node local timestamping with distributed cross node vector clocks.
+The initial experiments using new clock yield nearly 40\% speedup
+over baseline timestamping clocks.
 
-In this work, we make following contribution;
+In this work, we make the following contributions;
 \begin{itemize}
-	\item{loosely-sychronized hybrid vector clocks}
+	\item{\bf Loosely-sychronized hybrid vector clocks} - we use hardware clock based timestamps to 
+		scale node local transactions and use conventional vector clocks to scale distributed
+		transactions. We further show how to combine these two concepts to create a novel hybrid 
+		timestamp technique.
+	\item{\bf Implementation and evaluation} - we implement and evalute the proposed 
+		timestamp mechanism on a real MVCC based key-value store.
 \end{itemize}
 

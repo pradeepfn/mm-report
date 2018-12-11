@@ -1,10 +1,19 @@
 \section{Scalable Timestamping}
+\begin{figure}[]   
+	\centering
+	\includegraphics[width=\linewidth]{figures/gtecho.pdf} 
+	\caption{\bf GTEcho key-value store is partitioned across multi-core nodes. These nodes
+	both hosts data and carry out compute (put/get operations) on clients behalf} 
+	\label{fig:gtecho} 
+\end{figure}
 
 In this section we describe how we optimize timestamping overheads
 associated with both node local and distributed trsansactions using combination
-a of hardware and vector clocks. The key intuition is, node local transactions
+a of hardware and vector clocks. The targeted system architecture is shown in Fig~\ref{fig:gtecho}.
+The key intuition is that, the node local transactions
 can be ordered using hardware clocks available in modern CPUs while distributed 
-transactions are ordered using per-thread vector clocks. We show how to combine these
+transactions are ordered using per-thread vector clocks that eliminates RDMA atomic operations
+on single memory location. Further, we show how to combine these
 two timestamping techniques to form a new type of hybrid clock based timestamping. 
 We name our new vector clock abstraction loosely Synchronized hybrid vector clocks ( LSHV clocks).
 
@@ -25,25 +34,25 @@ cluster and the partition has $i$ transaction execution threads.
 We now explain how to use LSH vectors for commit timestamping. There are two distinct usecases based on the
 locality of the transaction execution thread,
 
-\noindent{local to the LSHV}
-If the transaction execution thread is local to the LSHV home partition, then $T_R[i] = ht_{i...j}$. That is 
-Execution thread uses hardware clock based timestamps. As the timestamping is node local the
-operation only involves CPU local instructions. However, instead of using atomic instructions to 
+\noindent{\bf local to the LSHV}
+If the transaction execution thread is local to the LSHV home partition, then $T_R[i] = ht_{i...j}$. 
+That is, Execution thread uses hardware clock based timestamps. As the timestamping is node local the
+operation only involves thread local instructions. However, instead of using atomic instructions to 
 obtain thread safe timestamps we create hardware thread local timestamps that completely eliminate 
 costly atomic operations. We differ the dicussion of safely creating hardware clock based timestamps
-that can server as ordering primitive till the next subsection.
+that can serve as ordering primitive till the next subsection.
 
-\noindent{remote to the LSHV}
+\noindent{\bf remote to the LSHV}
 If the transaction execution thread is remtoe to the LSHV home partition, then $T_R[i] = t_i $. The $t_i$
 represents the latest commit timestamp that was made by the execution thread $i$. Thus incrementing the 
-timestamp can be done using without RDMA operation -- as this is the latest timestamp for this particular 
+timestamp can be done without using a RDMA operation -- as this is the latest timestamp for this particular 
 thread as per the vector clock. Therefore the commit timestamp would be $t_i + 1$
 
 Hardware based clock timestamp component of the LSHV eliminates the need for costly atomic counters and
 the vectorizing the remote timestamps remove the RDMA roundtrips while timestamping. During the commit,
 as we describe in the basic SI protocol, the transaction thread has to validate the read/write set before
-installing the new values. If the commit is successful, it then updates the $T_R$ to reflect the latest commit
-timestamp.
+installing the new values. If the commit is successful, it then updates the 
+$T_R$ to reflect the latest commit timestamp.
 
 \noindent{\bf Read Timestamps}
 Transaction threads read $T_R$ during the first transactional read from each of the partition and use it
@@ -51,16 +60,12 @@ as the read-timestamp to construct GTEcho snapshot while transaction execution. 
 the hash-table to find visibile data versions for a given key.
 
 \subsection{Ordering Local Updates}
-However, timestamping local transactions ( commit timestamps ) is still a costly operation.
-
-
-
+Here we explain how we generate $ht_{i...j}$ timestamps for $T_R$.
 We order local updates based on CPU clocks. Each CPU core has a mononotonically increasing clock. However
 these clocks are not synchronized with each other -- we cannot derive total ordering of events based on hardware thread
 local time. This is due to clock bootstrap time for each of the core differs due to electrical signaling delays during machine
-startup. However, it has shown that these individual hardware clocks maintain constant a clock-skew with each other during
-once they are properly bootstrap. Therefore with conservative clock ordering boundary similar to Google Spanner's~\cite{spanner}
-Truetime, we can use hardware clocks for ordering events -- specifically node local commit timestamping for transactions.
+startup. However, it has shown that these individual hardware clocks maintain a constant clock-skew with each other once they are properly bootstrapped. Therefore with conservative clock ordering boundary similar to Google Spanner's~\cite{spanner}
+Truetime, we can use hardware clocks to order events -- specifically node local commit timestamping for transactions.
 
 Recent work Ordo~\cite{ordo} has shown how to derive a conservative ordering boundary to order events based on hardware clocks.
 They use software mechanism - spefically cacheline based messaging to derive a safe ordering boundary that enable comparison
@@ -69,10 +74,10 @@ use the following API for hardware clock based timestamping.
 
 
 \begin{itemize}
-	\item get\_time() - create a hardware clock based timestamp. Takes care of instruction ordering while doing so.
-	\item new\_time(time\_t t) - create a hardware timestamp, that is greater than the provided timestamp. Makes sure the returned 
+	\item {\bf get\_time()} - create a hardware clock based timestamp. Takes care of instruction ordering while doing so.
+	\item {\bf new\_time(time\_t t)} - create a hardware timestamp, that is greater than the provided timestamp. Makes sure the returned 
 		timestamp is safe to compare with ordering boundary offset.
-	\item cmp\_time(time\_t t1, time\_t t2)) - compares two hardware timestamps. 
+	\item {\bf cmp\_time(time\_t t1, time\_t t2)} - compares two hardware timestamps. 
 \end{itemize}
 
 
